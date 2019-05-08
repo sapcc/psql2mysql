@@ -115,9 +115,9 @@ class DbWrapper(object):
                     continue
                 if len(row[col]) > MAX_TEXT_LEN:
                     long_values.append({
-                      "column": col,
-                      "primary": ["%s=%s" % (k.name, row[k.name])
-                                  for k in primary_keys]
+                        "column": col,
+                        "primary": ["%s=%s" % (k.name, row[k.name])
+                                    for k in primary_keys]
                     })
         return long_values
 
@@ -125,7 +125,7 @@ class DbWrapper(object):
         columns = table.columns
         textColumns = [
             c.name for c in columns if str(c.type).startswith('VARCHAR') or
-            str(c.type) == 'TEXT'
+                                       str(c.type) == 'TEXT'
         ]
         return textColumns
 
@@ -154,10 +154,10 @@ class DbWrapper(object):
                     continue
                 if regex.search(row[col]):
                     incompatible.append({
-                      "column": col,
-                      "value": row[col],
-                      "primary": ["%s=%s" % (k.name, row[k.name])
-                                  for k in primary_keys]
+                        "column": col,
+                        "value": row[col],
+                        "primary": ["%s=%s" % (k.name, row[k.name])
+                                    for k in primary_keys]
                     })
         return incompatible
 
@@ -167,9 +167,9 @@ class DbWrapper(object):
 
     # FIXME move this to a MariaDB specific class?
     def disable_constraints(self):
-        self.connection.execute(
-            "SET SESSION check_constraint_checks='OFF'"
-        )
+        # self.connection.execute(
+        #     "SET SESSION check_constraint_checks='OFF'"
+        # )
         self.connection.execute(
             "SET SESSION foreign_key_checks='OFF'"
         )
@@ -266,7 +266,14 @@ class DbDataMigrator(object):
         self.target_db.disable_constraints()
 
         for table in source_tables:
+
+            result = self.src_db.readTableRows(table)
+            if not (result.returns_rows and result.rowcount > 0):
+                LOG.info("Skipping EMPTY table : '%s'" % table.name)
+                continue
+
             LOG.info("Migrating table: '%s'" % table.name)
+
             if table.name not in target_tables:
                 raise Psql2MysqlRuntimeError(
                     "Table '%s' does not exist in target database" %
@@ -278,10 +285,9 @@ class DbDataMigrator(object):
             # FIXME: Should we put this into a config setting
             # (e.g. --skiptables?)
             if (table.name == "migrate_version" or
-                    table.name.startswith("alembic_")):
+                    "alembic" in table.name):
                 continue
 
-            result = self.src_db.readTableRows(table)
             if result.returns_rows and result.rowcount > 0:
                 LOG.info("Rowcount %s" % result.rowcount)
                 # FIXME: Allow to process this in batches instead one possibly
@@ -471,7 +477,7 @@ def main():
 
     # read config and initialize logging
     cfg.CONF(project='psql2mysql')
-#    cfg.CONF.set_override("use_stderr", True)
+    #    cfg.CONF.set_override("use_stderr", True)
 
     logging.setup(cfg.CONF, 'psql2mysql')
 
