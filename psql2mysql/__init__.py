@@ -22,7 +22,7 @@ import yaml
 from oslo_config import cfg
 from oslo_log import log as logging
 from prettytable import PrettyTable
-from rfc3986 import uri_reference
+from urlparse import urlparse as uri_reference
 from sqlalchemy import create_engine, MetaData, or_, text, types
 from sqlalchemy import exc as sa_exc
 from psql2mysql.datetime2decimal import PreciseTimestamp
@@ -422,7 +422,7 @@ def do_purge_tables(config, source, target):
 
 # restrict the source database to postgresql for now
 def check_source_schema(source):
-    if uri_reference(source).scheme != "postgresql":
+    if uri_reference(source, allow_fragments=False).scheme != "postgresql":
         print('Error: Only "postgresql" is supported as the source database '
               'currently', file=sys.stderr)
         sys.exit(1)
@@ -431,7 +431,7 @@ def check_source_schema(source):
 # restrict the target database to mysql+pymsql
 def check_target_schema(target):
 
-    uri = uri_reference(target)
+    uri = uri_reference(target, allow_fragments=False)
     if uri.scheme != "mysql+pymysql":
         print('Error: Only "mysql" with the "pymysql" driver is supported '
               'as the target database currently',
@@ -451,10 +451,10 @@ def main():
                           title="Commands",
                           help="Available commands",
                           handler=add_subcommands),
-        cfg.URIOpt('source',
+        cfg.StrOpt('source',
                    required=False,
                    help='connection URL to the src DB server'),
-        cfg.URIOpt('target',
+        cfg.StrOpt('target',
                    required=False,
                    help='connection URL to the target server'),
         cfg.StrOpt('batch',
