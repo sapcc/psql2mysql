@@ -246,7 +246,7 @@ class DbDataMigrator(object):
 
         for table in self.target_db.getSortedTables():
             if (table.name == "migrate_version" or
-                    table.name.startswith("alembic_")):
+                    "alembic" in table.name):
                 continue
             self.target_db.clearTable(table)
 
