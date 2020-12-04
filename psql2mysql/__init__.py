@@ -19,6 +19,7 @@ import six
 import sys
 import warnings
 import yaml
+from multiprocessing import Process
 from oslo_config import cfg
 from oslo_log import log as logging
 from prettytable import PrettyTable
@@ -443,6 +444,19 @@ def check_target_schema(target):
         sys.exit(1)
 
 
+def db_main_process(db_name, db):
+    """Start processing of a single DB"""
+    print('Processing database "%s"... ' % db_name)
+    check_source_schema(db['source'])
+    if db['target']:
+        check_target_schema(db['target'])
+    try:
+        cfg.CONF.command.func(cfg, db['source'], db['target'])
+    except Psql2MysqlRuntimeError as e:
+        print(e, file=sys.stderr)
+        sys.exit(1)
+
+
 def main():
     # FIXME: Split these up into separate components?
     #   host, port, username, password, database
@@ -492,16 +506,17 @@ def main():
     if cfg.CONF.batch:
         try:
             with open(cfg.CONF.batch, 'r') as f:
+                all_procs = []
                 for db_name, db in yaml.load(f).iteritems():
-                    print('Processing database "%s"... ' % db_name)
-                    check_source_schema(db['source'])
-                    if db['target']:
-                        check_target_schema(db['target'])
-                    cfg.CONF.command.func(cfg, db['source'], db['target'])
+                    all_procs.append(Process(target=db_main_process,
+                                             args=(db_name, db)))
 
-        except Psql2MysqlRuntimeError as e:
-            print(e, file=sys.stderr)
-            sys.exit(1)
+                # start all processes and wait until they finish
+                for p in all_procs:
+                  p.start()
+                for p in all_procs:
+                  p.join()
+
         except IOError:
             print('Batch file "%s" does not exist or cannot be read'
                   % cfg.CONF.batch)
