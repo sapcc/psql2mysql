@@ -19,6 +19,7 @@ import six
 import sys
 import warnings
 import yaml
+import concurrent.futures
 from multiprocessing import Process
 from oslo_config import cfg
 from oslo_log import log as logging
@@ -251,6 +252,38 @@ class DbDataMigrator(object):
                 continue
             self.target_db.clearTable(table)
 
+    def process_table(self, table, target_tables):
+        """Process a single DB table"""
+        result = self.src_db.readTableRows(table)
+        if not (result.returns_rows and result.rowcount > 0):
+            LOG.info("Skipping EMPTY table : '%s'" % table.name)
+            return
+
+        LOG.info("Migrating table: '%s'" % table.name)
+
+        if table.name not in target_tables:
+            raise Psql2MysqlRuntimeError(
+                "Table '%s' does not exist in target database" %
+                table.name)
+
+        self.setupTypeDecorators(table, target_tables[table.name])
+
+        # skip the schema migration related tables
+        # FIXME: Should we put this into a config setting
+        # (e.g. --skiptables?)
+        if (table.name == "migrate_version" or
+                "alembic" in table.name):
+            return
+
+        if result.returns_rows and result.rowcount > 0:
+            LOG.info("Rowcount %s - Table %s" % (result.rowcount, table.name))
+            # FIXME: Allow to process this in batches instead one possibly
+            # huge transcation?
+            self.target_db.writeTableRows(target_tables[table.name],
+                                          result)
+        else:
+            LOG.debug("Table '%s' is empty" % table.name)
+
     def migrate(self):
         source_tables = self.src_db.getSortedTables()
         target_tables = self.target_db.getTables()
@@ -266,37 +299,16 @@ class DbDataMigrator(object):
         LOG.info("Disabling constraints on target DB for the migration")
         self.target_db.disable_constraints()
 
-        for table in source_tables:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
+            futures = []
+            for table in source_tables:
+                # create a task per table:
+                futures.append(executor.submit(self.process_table,
+                                               table,
+                                               target_tables))
 
-            result = self.src_db.readTableRows(table)
-            if not (result.returns_rows and result.rowcount > 0):
-                LOG.info("Skipping EMPTY table : '%s'" % table.name)
-                continue
-
-            LOG.info("Migrating table: '%s'" % table.name)
-
-            if table.name not in target_tables:
-                raise Psql2MysqlRuntimeError(
-                    "Table '%s' does not exist in target database" %
-                    table.name)
-
-            self.setupTypeDecorators(table, target_tables[table.name])
-
-            # skip the schema migration related tables
-            # FIXME: Should we put this into a config setting
-            # (e.g. --skiptables?)
-            if (table.name == "migrate_version" or
-                    "alembic" in table.name):
-                continue
-
-            if result.returns_rows and result.rowcount > 0:
-                LOG.info("Rowcount %s" % result.rowcount)
-                # FIXME: Allow to process this in batches instead one possibly
-                # huge transcation?
-                self.target_db.writeTableRows(target_tables[table.name],
-                                              result)
-            else:
-                LOG.debug("Table '%s' is empty" % table.name)
+            for future in concurrent.futures.as_completed(futures):
+                print(future.result())
 
     def setupTypeDecorators(self, srcTable, targetTable):
         """
