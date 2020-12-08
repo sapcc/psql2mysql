@@ -58,7 +58,8 @@ class DbWrapper(object):
         self.chunk_size = chunk_size
 
     def connect(self):
-        self.engine = create_engine(self.uri)
+        self.engine = create_engine(self.uri,
+                                    connect_args={'connect_timeout': 1000})
         self.connection = self.engine.connect()
 
     def getSortedTables(self):
@@ -179,6 +180,11 @@ class DbWrapper(object):
     def writeTableRows(self, table, rows):
         # new connection per each table
         conn = self.engine.connect()
+        # also no fq checks
+        conn.execute(
+            "SET SESSION foreign_key_checks='OFF'"
+        )
+
         if self.chunk_size > 0:
             chunk = rows.fetchmany(self.chunk_size)
             while chunk:
