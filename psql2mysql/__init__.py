@@ -177,13 +177,15 @@ class DbWrapper(object):
         )
 
     def writeTableRows(self, table, rows):
+        # new connection per each table
+        conn = self.engine.connect()
         if self.chunk_size > 0:
             chunk = rows.fetchmany(self.chunk_size)
             while chunk:
-                self.connection.execute(table.insert(), chunk)
+                conn.execute(table.insert(), chunk)
                 chunk = rows.fetchmany(self.chunk_size)
         else:
-            self.connection.execute(
+            conn.execute(
                 table.insert(),
                 rows.fetchall()
             )
@@ -299,7 +301,7 @@ class DbDataMigrator(object):
         LOG.info("Disabling constraints on target DB for the migration")
         self.target_db.disable_constraints()
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
             futures = []
             for table in source_tables:
                 # create a task per table:
