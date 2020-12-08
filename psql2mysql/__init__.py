@@ -62,7 +62,8 @@ class DbWrapper(object):
                                     connect_args={'connect_timeout': 3000},
                                     pool_size=200,
                                     max_overflow=50,
-                                    pool_timeout=300)
+                                    pool_timeout=300,
+                                    pool_pre_ping=True)
         self.connection = self.engine.connect()
 
     def getSortedTables(self):
@@ -182,22 +183,22 @@ class DbWrapper(object):
 
     def writeTableRows(self, table, rows):
         # new connection per each table
-        conn = self.engine.connect()
-        # also no fq checks
-        conn.execute(
-            "SET SESSION foreign_key_checks='OFF'"
-        )
-
-        if self.chunk_size > 0:
-            chunk = rows.fetchmany(self.chunk_size)
-            while chunk:
-                conn.execute(table.insert(), chunk)
-                chunk = rows.fetchmany(self.chunk_size)
-        else:
+        with self.engine.connect() as conn:
+            # also no fq checks
             conn.execute(
-                table.insert(),
-                rows.fetchall()
+                "SET SESSION foreign_key_checks='OFF'"
             )
+
+            if self.chunk_size > 0:
+                chunk = rows.fetchmany(self.chunk_size)
+                while chunk:
+                    conn.execute(table.insert(), chunk)
+                    chunk = rows.fetchmany(self.chunk_size)
+            else:
+                conn.execute(
+                    table.insert(),
+                    rows.fetchall()
+                )
 
     def clearTable(self, table):
         LOG.debug("Purging table: %s", table.name)
