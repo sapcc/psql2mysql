@@ -59,7 +59,10 @@ class DbWrapper(object):
 
     def connect(self):
         self.engine = create_engine(self.uri,
-                                    connect_args={'connect_timeout': 1000})
+                                    connect_args={'connect_timeout': 3000},
+                                    pool_size=200,
+                                    max_overflow=50,
+                                    pool_timeout=300)
         self.connection = self.engine.connect()
 
     def getSortedTables(self):
