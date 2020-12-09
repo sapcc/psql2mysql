@@ -183,22 +183,25 @@ class DbWrapper(object):
 
     def writeTableRows(self, table, rows):
         # new connection per each table
-        with self.engine.connect() as conn:
-            # also no fq checks
-            conn.execute(
-                "SET SESSION foreign_key_checks='OFF'"
-            )
-
-            if self.chunk_size > 0:
+        conn = self.engine.connect()
+        # also no fq checks
+        conn.execute(
+            "SET SESSION foreign_key_checks='OFF'"
+        )
+        if self.chunk_size > 0:
+            chunk = rows.fetchmany(self.chunk_size)
+            while chunk:
+                conn.execute(table.insert(), chunk)
                 chunk = rows.fetchmany(self.chunk_size)
-                while chunk:
-                    conn.execute(table.insert(), chunk)
-                    chunk = rows.fetchmany(self.chunk_size)
-            else:
-                conn.execute(
-                    table.insert(),
-                    rows.fetchall()
-                )
+        else:
+            conn.execute(
+                table.insert(),
+                rows.fetchall()
+            )
+        try:
+            conn.close()
+        except sa_exc.DatabaseError:
+            LOG.debug("DB Error on connection reset. Ignoring...")
 
     def clearTable(self, table):
         LOG.debug("Purging table: %s", table.name)
